@@ -1,0 +1,363 @@
+---
+title: "STAT/CS 187 Homework 3"
+author: "Solutions"
+date: "Spring 2022"
+output:
+  word_document:
+    keep_md: true
+    
+---
+  
+### Set Up Your Project and Load Libraries
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE) 
+
+## Set the default size of figures
+knitr::opts_chunk$set(fig.width=8, fig.height=5)  
+
+## Load the libraries we will be using
+pacman::p_load(tidyverse)
+
+## Changing the default theme to black white
+theme_set(theme_bw())
+
+```
+
+### Question 1: Board Game Geek Reviews by Category
+
+In general, we see that ideal diamonds are least likely to have the worst color (J), and more likely to have better colors than the lesser cuts.  However, the trends are not dramatic.  The first plot makes it clear that there are many more diamonds with better cuts, than those with Fair or Good cuts.
+
+```{r 1_load_boardgames}
+# Read in the board game data below:
+bgs <- read.csv("board games.csv")
+
+# Next, remove any games with the game_category "Other"
+bg1 <- bgs %>% 
+  
+  filter(game_category != "Other")
+  
+
+# Then change the rating_group to a factor with ORDERED levels Terrible, Bad, Average, Good, Great
+bg1 <- 
+  bg1 %>% 
+  
+  mutate(rating_group = rating_group %>% 
+                        as_factor() %>%   # Changes to a factor with levels ordered in the data
+                        as.ordered())     # Makes the column an ordered factor
+  
+str(bg1)
+```
+
+#### Part 1a) Side-by-Side Bar Chart
+
+```{r 1a_bg_sbs}
+# Create the side-by-side bar chart for rating by category:
+bg1 %>% 
+  
+  ggplot(mapping = aes(x = game_category,
+                       fill = rating_group)) +
+  
+  geom_bar(position = "dodge") + 
+
+  labs(x = "Board Game Category",
+       fill = "Game Rating") + 
+  
+  theme_test() +
+  
+  theme(legend.position = "bottom") + 
+  
+  scale_y_continuous(minor_breaks = NULL,
+                     expand = expansion(mult = 0,
+                                        add = c(0, 50))) + 
+  
+  scale_fill_viridis_d(option = "cividis") 
+```
+
+
+#### Part 1b) Conditional Proportions - Rating by Category
+
+
+``` {r 1b_relprops}
+# Create a data set that has the rating proportions for each individual game_category
+
+# Book Method
+rating_by_category <- 
+  bg1 %>%
+  
+  group_by(game_category, rating_group) %>%
+  
+  summarize(rating_cat_n = n()) %>%
+  
+  mutate(proportion = rating_cat_n / sum(rating_cat_n)) %>% 
+  
+  dplyr::select(-rating_cat_n)
+
+tibble(rating_by_category)
+
+
+# Alternative method
+rat_by_cat <- 
+  
+  bg1 %>% 
+  
+  # Using xtabs to calculate the count for each category and rating combo
+  xtabs(formula = ~ rating_group + game_category) %>% 
+  
+  # prop.table to convert the counts to a conditional proportion
+  prop.table(margin = "game_category") %>% 
+  
+  # Converting the table to a data.frame
+  data.frame() %>% 
+  
+  # Converting rating_group back to an ordered factor
+  mutate(rating_group = as.ordered(rating_group)) %>% 
+  
+  # Changing Freq to proportion
+  rename(proportion = Freq) %>% 
+  
+  # Reordering the columns
+  dplyr::select(game_category, rating_group, proportion)
+
+tibble(rat_by_cat)
+```
+
+Students only need to use one method above, but should use one of the two. The steps don't need to be identical, but if you see a major deviation, let me know!
+
+
+#### Part c) Relative Side-by-Side Bar Chart
+
+```{r 1c_rel_sbs}
+# Create the Side-by-Side box plot shown in the homework instructions:
+ggplot(data = rat_by_cat,
+       mapping = aes(x = game_category,
+                     y = proportion,
+                     fill = rating_group)) + 
+  
+  geom_col(position = "dodge") + 
+  
+  theme_test() + 
+  
+  labs(x = "Board Game Category",
+       fill = "Game Rating",
+       y = "Percent") +
+  
+  theme(legend.position = "bottom") +
+  
+  scale_y_continuous(labels = scales::percent,
+                     expand = expansion(mult = 0,
+                                        add = c(0, 0.020)))  +
+  
+  scale_fill_viridis_d(option = "cividis") 
+```
+
+
+
+###  Question 2: More Board Games - Rating by Year
+
+Question 2 will use the full data set (all 20,000+ board games), not the smaller set from Question 1
+
+#### Part 2a) Average Rating by Year
+
+Create a data set named *games_cat_year* that summarizes the data for each year_published and game_category combination. The data set should have the following columns:
+
+- category = The game_category
+- year = The publishing year
+- games = the number of games for the category and year combination
+- rating_mean = the average rating for all games of the category released for the year
+- rating_sdev = the standard deviation for rating_avg for all games of the category released for the year
+
+Only keep the rows from 1990 to the present
+
+Print 
+
+```{r 2a_rating_summ}
+# Create the new data.frame 
+games_cat_year <- 
+  
+  bgs %>% 
+  
+  group_by(game_category, year_published) %>% 
+  
+  summarize(games = n(),
+            rating_mean = mean(rating_avg, na.rm = T),
+            rating_sdev = sd(rating_avg, na.rm = T)) %>% 
+  
+  ungroup() %>% 
+  
+  rename(category = game_category,
+         year = year_published) %>% 
+  
+  filter(year >= 1990)
+  
+
+# Use the code below to print your results
+games_cat_year %>%
+
+  group_by(category) %>% 
+  
+  slice_max(n = 1, 
+            order_by = games) %>% 
+  
+  ungroup() 
+  
+```
+
+#### Part 2b) Linegraph for Rating by Year per Category
+
+
+
+```{r 2b_strategic_linegraph, message=F, warning=F}
+gg_strategy_rating <- 
+  games_cat_year %>% 
+  
+  filter(category == "Strategy") %>% 
+  
+  ggplot(mapping = aes(x = year,
+                       y = rating_mean)) + 
+  
+  geom_line(color = "orchid",
+            size = 1) + 
+  
+  labs(y = "Average Rating",
+       x = "Year") 
+
+gg_strategy_rating
+```
+
+#### Part 2c) Smoothed Line for Overall Mean by Year
+
+Add a smoothed LOESS line to the previous graph for the average rating for games per year, not separated by category. Set the following aesthetics for the smoothed line:
+
+- size = 0.5
+- color = "black"
+- linetype = "dashed"
+
+```{r 2c_added_mean_line, message=F, warning=F}
+gg_strategy_rating +
+  
+  geom_smooth(data = games_cat_year %>% 
+                   group_by(year) %>% 
+                   summarize(overall_avg = sum(rating_mean*games)/sum(games)),
+            mapping = aes(y = overall_avg),
+            se = F,
+            size = 0.5,
+            color = "black",
+            linetype = "dashed")  +
+  
+  annotate(geom = "text", label = "Average rating for all games",
+           x = 2015, y = 6) + 
+  
+  annotate(geom = "text", label = "Average rating for Strategy games",
+           x = 1995, y = 7.25, color = "orchid")  
+  
+
+```
+
+
+#### Part 2d) Each Game Category
+
+Use small multiples to create the same graph from 2c) for all 9 game categories. 
+
+What can you determine about the opinions of Board Game Geek users about the different category of games?
+
+```{r 2d_allcategories, message=F, warning=F}
+games_cat_year %>% 
+  
+  ggplot(mapping = aes(x = year,
+                       y = rating_mean)) + 
+  
+  geom_line(mapping = aes(color = category),
+            size = 1) + 
+  
+  facet_wrap(facets = ~ category) + 
+  
+  theme(legend.position = "none") + 
+  
+  labs(y = "Average Rating",
+       x = "Year",
+       caption = "Black line represents the average rating for all games") +
+  
+  geom_smooth(data = games_cat_year %>% 
+                   group_by(year) %>% 
+                   summarize(overall_avg = sum(rating_mean*games)/sum(games)),
+            mapping = aes(y = overall_avg),
+            se = F,
+            size = 0.5,
+            color = "black",
+            linetype = "dashed") 
+
+
+
+```
+
+
+
+### Question 3: Word Data
+
+#### Part a) Change word level order
+```{r load_words}
+# Read the word data into the R environment
+words <- read.csv("words.csv")
+
+# Change word to a factor with the level order as idiot/moron/nimrod/nerd/geek/dork
+words <- words %>% 
+  
+  mutate(word = factor(word,
+                        levels = c("idiot", "moron", "nimrod",
+                                   "nerd", "geek", "dork")))
+
+# Use the code below to check that the words are in the correct order
+levels(words$word)
+
+```
+
+
+
+#### 3b) Graph of words over time
+
+```{r 3b_word_time}
+# Create a plot of relative usage by year for each word
+gg_word_line <- 
+  
+  words %>% 
+  
+  ggplot(mapping = aes(x = Year,
+                       y = relative_usage,
+                       color = word)) + 
+  
+  geom_line(size = 1) + 
+  
+  labs(x = "Year",
+       y = "Relative Word Usage")
+
+gg_word_line
+
+```
+
+
+#### 3c) Display Word Without Legend
+
+Instead of using a legend to represent the words, place the word itself at the beginning of each line. The word size is 5
+
+
+```{r 3c_alternative_legend}
+gg_word_line +
+  
+  theme(legend.position = "none") +
+  
+  geom_text(data = words %>% 
+                   group_by(word) %>% 
+                   filter(Year == min(Year)),
+            
+            mapping = aes(label = word),
+            hjust = 1,
+            size = 5) + 
+  
+  # Add the function below to make your plot match what is in the homework description
+  scale_x_continuous(limits = c(1840, 2020),
+                     breaks = seq(1850, 2000, by = 25),
+                     minor_breaks = NULL)
+
+```
+
